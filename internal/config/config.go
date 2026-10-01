@@ -24,22 +24,22 @@ type DatabaseConfig struct {
 }
 
 func LoadConfig() *Config {
-	length := getEnvOrDefault("SHORT_LENGTH", "5")
+	length := os.Getenv("SHORT_LENGTH")
 	value, err := strconv.Atoi(length)
 	if err != nil {
 		log.Println("Invalid ShortURL parameter type")
 		return nil
 	}
 	return &Config{
-		Port:           getEnvOrDefault("APP_PORT", "8080"),
+		Port:           os.Getenv("APP_PORT"),
 		ShortURLLength: value,
 		Dbc: DatabaseConfig{
-			Name:     getEnvOrDefault("DB_NAME", "postgres"),
-			Host:     getEnvOrDefault("DB_HOST", "localhost"),
-			Port:     getEnvOrDefault("DB_PORT", "5432"),
-			User:     getEnvOrDefault("DB_USER", "postgres"),
-			Password: getEnvOrDefault("DB_PASSWORD", "postgres"),
-			SSLmode:  getEnvOrDefault("DB_SSLMODE", "disabled"),
+			Name:     os.Getenv("DB_NAME"),
+			Host:     os.Getenv("DB_HOST"),
+			Port:     os.Getenv("DB_PORT"),
+			User:     os.Getenv("DB_USER"),
+			Password: os.Getenv("DB_PASSWORD"),
+			SSLmode:  os.Getenv("DB_SSLMODE"),
 		},
 		Charset: func() string {
 			const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -50,13 +50,13 @@ func LoadConfig() *Config {
 	}
 }
 
-func getEnvOrDefault(key, def string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return def
-	}
-	return value
-}
+//func getEnvOrDefault(key, def string) string {
+//	value := os.Getenv(key)
+//	if value == "" {
+//		return def
+//	}
+//	return value
+//}
 
 func (dbc *DatabaseConfig) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbc.User, dbc.Password,
