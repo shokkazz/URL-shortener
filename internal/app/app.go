@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/pressly/goose/v3"
 )
 
 func StartApp() {
@@ -40,6 +42,10 @@ func StartApp() {
 	err = db.Ping(ctx)
 	if err != nil {
 		log.Println("Error during database initial ping: ", err)
+		return
+	}
+	if err := runMigrations(cfg.Dbc.DSN()); err != nil {
+		log.Println("Error during migrations:", err)
 		return
 	}
 	ur := postgres.NewURLRepository(db)
@@ -122,4 +128,18 @@ func (rw *responseRecorder) Write(body []byte) (int, error) {
 	}
 
 	return rw.ResponseWriter.Write(body)
+}
+
+func runMigrations(dsn string) error {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+
+	return goose.Up(db, "migrations")
 }
