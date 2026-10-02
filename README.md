@@ -33,8 +33,8 @@
 
 ## Требования
 
-- **Go** 1.22+ (в Docker образе используется `golang:1.27`)
-- **Docker** и **Docker Compose** (для PostgreSQL)
+- **Go** 1.27
+- **Docker** и **Docker Compose** 
 - Свободные порты: `8080` (приложение), `5432` (PostgreSQL)
 
 ---
