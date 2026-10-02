@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -16,19 +15,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
-	"github.com/pressly/goose/v3"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func StartApp() {
-	err := godotenv.Load()
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Println("Error during environment variables load: ", err)
-		return
-	}
-	cfg := config.LoadConfig()
-	if cfg == nil {
-		log.Println("Error nil config")
+		log.Println("Error loading config:", err)
 		return
 	}
 	ctx := context.Background()
@@ -44,13 +37,10 @@ func StartApp() {
 		log.Println("Error during database initial ping: ", err)
 		return
 	}
-	if err := runMigrations(cfg.Dbc.DSN()); err != nil {
-		log.Println("Error during migrations:", err)
-		return
-	}
 	ur := postgres.NewURLRepository(db)
-	us := service.NewShortenerService(ur, cfg.ShortURLLength, cfg.Charset)
+	us := service.NewShortenerService(ur, cfg.ShortURLLength, cfg.Charset, cfg.CleanupSeconds)
 	uh := myhttp.NewHandler(us)
+	us.StartCleanup(ctx)
 
 	mux := http.NewServeMux()
 
@@ -58,6 +48,7 @@ func StartApp() {
 	mux.HandleFunc("POST /shorten", uh.CreateShortLink)
 	mux.HandleFunc("GET /shorten", uh.GetShortLink)
 	mux.HandleFunc("DELETE /shorten", uh.DeleteShortLink)
+	mux.Handle("/", http.FileServer(http.Dir("./web")))
 
 	loggingHandler := loggerMiddleware(mux)
 
@@ -128,18 +119,4 @@ func (rw *responseRecorder) Write(body []byte) (int, error) {
 	}
 
 	return rw.ResponseWriter.Write(body)
-}
-
-func runMigrations(dsn string) error {
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-
-	return goose.Up(db, "migrations")
 }

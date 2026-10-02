@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>URL Shortener</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px 20px;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            color: #222;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .card {
+            background: white;
+            padding: 24px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 15px;
+        }
+
+        button {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 5px;
+            background: #333;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f0f0f0;
+            word-break: break-word;
+        }
+
+        .success {
+            color: #187a2f;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .error {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 5px;
+            background: #ffe5e5;
+            color: #a00000;
+        }
+
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f0f0f0;
+            word-break: break-word;
+        }
+
+        .info-row {
+            margin-bottom: 8px;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-weight: bold;
+        }
+
+        .clicks {
+            font-weight: bold;
+        }
+
+        .expired {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 5px;
+            background: #fff0d9;
+            color: #8a4b00;
+            font-weight: bold;
+        }
+
+        .hint {
+            margin-top: -8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        a {
+            color: #0645ad;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>URL Shortener</h1>
+
+
+    <!-- Create -->
+    <div class="card">
+        <h2>Create short link</h2>
+
+        <label for="createUrl">
+            URL
+        </label>
+
+        <input
+                id="createUrl"
+                type="url"
+                placeholder="https://example.com"
+                autocomplete="off"
+        >
+
+        <label for="expiresIn">
+            TTL
+        </label>
+
+        <input
+                id="expiresIn"
+                type="number"
+                min="1"
+                placeholder="Seconds, optional"
+        >
+
+        <div class="hint">
+            Leave empty if the link should never expire.
+        </div>
+
+        <label for="maxClicks">
+            Maximum clicks
+        </label>
+
+        <input
+                id="maxClicks"
+                type="number"
+                min="1"
+                placeholder="Maximum clicks, optional"
+        >
+
+        <div class="hint">
+            Leave empty if the link should have unlimited clicks.
+        </div>
+
+        <button onclick="createShortLink()">
+            Shorten URL
+        </button>
+
+        <div id="createResult"></div>
+    </div>
+
+
+    <!-- Find -->
+    <div class="card">
+        <h2>Find short link</h2>
+
+        <label for="findUrl">
+            Original URL
+        </label>
+
+        <input
+                id="findUrl"
+                type="url"
+                placeholder="https://example.com"
+                autocomplete="off"
+        >
+
+        <button onclick="getShortLink()">
+            Find
+        </button>
+
+        <div id="findResult"></div>
+    </div>
+
+
+    <!-- Delete -->
+    <div class="card">
+        <h2>Delete short link</h2>
+
+        <label for="deleteUrl">
+            Original URL
+        </label>
+
+        <input
+                id="deleteUrl"
+                type="url"
+                placeholder="https://example.com"
+                autocomplete="off"
+        >
+
+        <button onclick="deleteShortLink()">
+            Delete
+        </button>
+
+        <div id="deleteResult"></div>
+    </div>
+
+</div>
+
+
+<script>
+    /*
+     * The backend is the source of truth.
+     *
+     * localStorage stores only the URL of the last created
+     * short link so that we can restore it after page reload.
+     *
+     * Clicks are NEVER stored in localStorage.
+     */
+
+
+    async function createShortLink() {
+        const urlInput =
+            document.getElementById("createUrl");
+
+        const expiresInput =
+            document.getElementById("expiresIn");
+
+        const maxClicksInput =
+            document.getElementById("maxClicks");
+
+        const result =
+            document.getElementById("createResult");
+
+        const url = urlInput.value.trim();
+
+        clearResult(result);
+
+        if (!url) {
+            showError(result, "URL is required");
+            return;
+        }
+
+
+        const body = {
+            url: url
+        };
+
+
+        /*
+         * TTL
+         */
+        if (expiresInput.value.trim() !== "") {
+            const expiresIn =
+                Number(expiresInput.value);
+
+            if (
+                !Number.isInteger(expiresIn) ||
+                expiresIn <= 0
+            ) {
+                showError(
+                    result,
+                    "TTL must be a positive integer"
+                );
+
+                return;
+            }
+
+            body.expires_in = expiresIn;
+        }
+
+
+        /*
+         * Maximum clicks
+         */
+        if (maxClicksInput.value.trim() !== "") {
+            const maxClicks =
+                Number(maxClicksInput.value);
+
+            if (
+                !Number.isInteger(maxClicks) ||
+                maxClicks <= 0
+            ) {
+                showError(
+                    result,
+                    "Maximum clicks must be a positive integer"
+                );
+
+                return;
+            }
+
+            body.max_clicks = maxClicks;
+        }
+
+
+        try {
+            const response = await fetch(
+                "/shorten",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify(body)
+                }
+            );
+
+
+            const data =
+                await parseResponse(response);
+
+
+            if (!response.ok) {
+                showError(
+                    result,
+                    data.error ||
+                    "Failed to create short link"
+                );
+
+                return;
+            }
+
+
+            /*
+             * Store only the information needed
+             * to restore the link after page reload.
+             *
+             * Do NOT store clicks here.
+             */
+            saveLastShortLink(data);
+
+
+            renderShortLink(
+                data,
+                result,
+                "Short link created successfully."
+            );
+
+        } catch (error) {
+            console.error(error);
+
+            showError(
+                result,
+                "Could not connect to server"
+            );
+        }
+    }
+
+
+    /*
+     * Restore the last created link and
+     * get its current state from the backend.
+     *
+     * The backend no longer hides inactive links:
+     * it returns 200 with the full record so the UI
+     * can display "clicks reached limit" or "expired".
+     */
+    async function refreshLinkStats() {
+        const stored =
+            localStorage.getItem(
+                "lastShortenedUrl"
+            );
+
+
+        if (!stored) {
+            return;
+        }
+
+
+        let link;
+
+        try {
+            link = JSON.parse(stored);
+        } catch (error) {
+            console.error(
+                "Invalid localStorage data:",
+                error
+            );
+
+            localStorage.removeItem(
+                "lastShortenedUrl"
+            );
+
+            return;
+        }
+
+
+        if (!link.url) {
+            localStorage.removeItem(
+                "lastShortenedUrl"
+            );
+
+            return;
+        }
+
+
+        try {
+            const response = await fetch(
+                `/shorten?url=${encodeURIComponent(link.url)}`
+            );
+
+
+            const data =
+                await parseResponse(response);
+
+
+            /*
+             * If the record is gone entirely
+             * (e.g. deleted or cleaned up),
+             * stop tracking it.
+             */
+            if (response.status === 404) {
+                localStorage.removeItem(
+                    "lastShortenedUrl"
+                );
+
+                return;
+            }
+
+
+            if (!response.ok) {
+                return;
+            }
+
+
+            const result =
+                document.getElementById(
+                    "createResult"
+                );
+
+
+            renderShortLink(
+                data,
+                result,
+                "Last created short link."
+            );
+
+        } catch (error) {
+            /*
+             * Do not destroy the current UI if
+             * a temporary request fails.
+             */
+            console.error(
+                "Failed to refresh link stats:",
+                error
+            );
+        }
+    }
+
+
+    /*
+     * Render short link information.
+     */
+    function renderShortLink(
+        data,
+        result,
+        message
+    ) {
+        const shortUrl =
+            `${window.location.origin}/${encodeURIComponent(data.shortened_url)}`;
+
+
+        let html = `
+            <div class="success">
+                ${escapeHtml(message)}
+            </div>
+
+            <div class="info">
+
+                <div class="info-row">
+                    <span class="info-label">
+                        Original URL:
+                    </span>
+
+                    <br>
+
+                    ${escapeHtml(data.url)}
+                </div>
+
+
+                <div class="info-row">
+                    <span class="info-label">
+                        Short URL:
+                    </span>
+
+                    <br>
+
+                    <a
+                        href="${escapeHtml(shortUrl)}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        ${escapeHtml(shortUrl)}
+                    </a>
+                </div>
+
+
+                <div class="info-row">
+                    <span class="info-label">
+                        Clicks:
+                    </span>
+
+                    <span class="clicks">
+                        ${data.clicks}
+                    </span>
+        `;
+
+
+        if (
+            data.max_clicks !== undefined &&
+            data.max_clicks !== null
+        ) {
+            html += `
+                    /
+                    ${data.max_clicks}
+            `;
+        } else {
+            html += `
+                    / unlimited
+            `;
+        }
+
+
+        html += `
+                </div>
+        `;
+
+
+        /*
+         * TTL
+         */
+        if (data.expires_at) {
+            html += `
+                <div class="info-row">
+                    <span class="info-label">
+                        Expires:
+                    </span>
+
+                    ${escapeHtml(
+                formatDate(data.expires_at)
+            )}
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="info-row">
+                    <span class="info-label">
+                        Expires:
+                    </span>
+
+                    Never
+                </div>
+            `;
+        }
+
+
+        html += `
+            </div>
+        `;
+
+
+        /*
+         * Determine whether the link is still usable.
+         *
+         * The backend keeps returning the record even
+         * after it becomes inactive, so we can tell the
+         * user exactly what happened.
+         */
+        const limitReached =
+            data.max_clicks !== undefined &&
+            data.max_clicks !== null &&
+            data.clicks >= data.max_clicks;
+
+
+        const expired =
+            data.expires_at !== undefined &&
+            data.expires_at !== null &&
+            new Date(data.expires_at).getTime() <= Date.now();
+
+
+        if (limitReached) {
+            html += `
+                <div class="expired">
+                    Click limit reached. This link is no longer active.
+                </div>
+            `;
+        } else if (expired) {
+            html += `
+                <div class="expired">
+                    Link expired. This link is no longer active.
+                </div>
+            `;
+        }
+
+
+        result.innerHTML = html;
+    }
+
+
+    /*
+     * Find existing short link.
+     */
+    async function getShortLink() {
+        const urlInput =
+            document.getElementById("findUrl");
+
+        const result =
+            document.getElementById("findResult");
+
+        const url =
+            urlInput.value.trim();
+
+
+        clearResult(result);
+
+
+        if (!url) {
+            showError(
+                result,
+                "URL is required"
+            );
+
+            return;
+        }
+
+
+        try {
+            const response = await fetch(
+                `/shorten?url=${encodeURIComponent(url)}`
+            );
+
+
+            const data =
+                await parseResponse(response);
+
+
+            if (!response.ok) {
+                showError(
+                    result,
+                    data.error ||
+                    "Short link not found"
+                );
+
+                return;
+            }
+
+
+            renderShortLink(
+                data,
+                result,
+                "Short link found."
+            );
+
+        } catch (error) {
+            console.error(error);
+
+            showError(
+                result,
+                "Could not connect to server"
+            );
+        }
+    }
+
+
+    /*
+     * Delete short link.
+     */
+    async function deleteShortLink() {
+        const urlInput =
+            document.getElementById("deleteUrl");
+
+        const result =
+            document.getElementById("deleteResult");
+
+        const url =
+            urlInput.value.trim();
+
+
+        clearResult(result);
+
+
+        if (!url) {
+            showError(
+                result,
+                "URL is required"
+            );
+
+            return;
+        }
+
+
+        try {
+            const response = await fetch(
+                `/shorten?url=${encodeURIComponent(url)}`,
+                {
+                    method: "DELETE"
+                }
+            );
+
+
+            /*
+             * 204 means successful deletion.
+             */
+            if (response.status === 204) {
+
+                /*
+                 * If the deleted link is the one
+                 * currently stored in localStorage,
+                 * remove it as well.
+                 */
+                const stored =
+                    localStorage.getItem(
+                        "lastShortenedUrl"
+                    );
+
+
+                if (stored) {
+                    try {
+                        const link =
+                            JSON.parse(stored);
+
+                        if (link.url === url) {
+                            localStorage.removeItem(
+                                "lastShortenedUrl"
+                            );
+
+                            clearResult(
+                                document.getElementById(
+                                    "createResult"
+                                )
+                            );
+                        }
+                    } catch (error) {
+                        console.error(error);
+                    }
+                }
+
+
+                result.innerHTML = `
+                    <div class="success">
+                        Short link deleted successfully.
+                    </div>
+                `;
+
+                return;
+            }
+
+
+            const data =
+                await parseResponse(response);
+
+
+            showError(
+                result,
+                data.error ||
+                "Failed to delete short link"
+            );
+
+        } catch (error) {
+            console.error(error);
+
+            showError(
+                result,
+                "Could not connect to server"
+            );
+        }
+    }
+
+
+    /*
+     * Save only the identity of the link.
+     *
+     * clicks, expiration etc. come from backend.
+     */
+    function saveLastShortLink(data) {
+        localStorage.setItem(
+            "lastShortenedUrl",
+            JSON.stringify({
+                url: data.url,
+                shortened_url: data.shortened_url
+            })
+        );
+    }
+
+
+    /*
+     * Parse JSON response safely.
+     */
+    async function parseResponse(response) {
+        const contentType =
+            response.headers.get(
+                "content-type"
+            );
+
+
+        if (
+            contentType &&
+            contentType.includes(
+                "application/json"
+            )
+        ) {
+            return await response.json();
+        }
+
+
+        return {};
+    }
+
+
+    /*
+     * Display API error.
+     */
+    function showError(
+        element,
+        message
+    ) {
+        element.innerHTML = `
+            <div class="error">
+                ${escapeHtml(message)}
+            </div>
+        `;
+    }
+
+
+    /*
+     * Clear result block.
+     */
+    function clearResult(element) {
+        element.innerHTML = "";
+    }
+
+
+    /*
+     * Format ISO date for user.
+     */
+    function formatDate(value) {
+        const date =
+            new Date(value);
+
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+            return value;
+        }
+
+
+        return date.toLocaleString();
+    }
+
+
+    /*
+     * Prevent HTML injection when
+     * displaying server/user data.
+     */
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+
+    /*
+     * Initial page load.
+     *
+     * Restore the last link from localStorage
+     * and immediately fetch its current state.
+     */
+    window.addEventListener(
+        "DOMContentLoaded",
+        async () => {
+
+            await refreshLinkStats();
+
+
+            /*
+             * Refresh statistics every 3 seconds.
+             *
+             * The backend remains the source of truth.
+             */
+            setInterval(
+                refreshLinkStats,
+                3000
+            );
+        }
+    );
+</script>
+
+</body>
+</html>

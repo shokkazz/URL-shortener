@@ -1,8 +1,8 @@
 package config
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 )
@@ -12,6 +12,7 @@ type Config struct {
 	Port           string
 	ShortURLLength int
 	Charset        string
+	CleanupSeconds int
 }
 
 type DatabaseConfig struct {
@@ -23,16 +24,21 @@ type DatabaseConfig struct {
 	SSLmode  string
 }
 
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	length := os.Getenv("SHORT_LENGTH")
 	value, err := strconv.Atoi(length)
-	if err != nil {
-		log.Println("Invalid ShortURL parameter type")
-		return nil
+	if err != nil || value <= 0 {
+		return nil, errors.New("SHORT_LENGTH must be a positive integer")
 	}
-	return &Config{
+	cleanup, err := strconv.Atoi(os.Getenv("CLEANUP_SECONDS"))
+	if err != nil {
+		return nil, errors.New("error during CLEANUP_SECONDS parsing")
+	}
+	cfg := &Config{
+		CleanupSeconds: cleanup,
 		Port:           os.Getenv("APP_PORT"),
 		ShortURLLength: value,
+		Charset:        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 		Dbc: DatabaseConfig{
 			Name:     os.Getenv("DB_NAME"),
 			Host:     os.Getenv("DB_HOST"),
@@ -41,13 +47,12 @@ func LoadConfig() *Config {
 			Password: os.Getenv("DB_PASSWORD"),
 			SSLmode:  os.Getenv("DB_SSLMODE"),
 		},
-		Charset: func() string {
-			const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			const digits = "0123456789"
-
-			return letters + digits
-		}(),
 	}
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 //func getEnvOrDefault(key, def string) string {
@@ -61,4 +66,36 @@ func LoadConfig() *Config {
 func (dbc *DatabaseConfig) DSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbc.User, dbc.Password,
 		dbc.Host, dbc.Port, dbc.Name, dbc.SSLmode)
+}
+
+func (cfg *Config) validate() error {
+	if cfg.Port == "" {
+		return errors.New("APP_PORT is required")
+	}
+
+	if cfg.Dbc.Host == "" {
+		return errors.New("DB_HOST is required")
+	}
+
+	if cfg.Dbc.Port == "" {
+		return errors.New("DB_PORT is required")
+	}
+
+	if cfg.Dbc.User == "" {
+		return errors.New("DB_USER is required")
+	}
+
+	if cfg.Dbc.Password == "" {
+		return errors.New("DB_PASSWORD is required")
+	}
+
+	if cfg.Dbc.Name == "" {
+		return errors.New("DB_NAME is required")
+	}
+
+	if cfg.Dbc.SSLmode == "" {
+		return errors.New("DB_SSLMODE is required")
+	}
+
+	return nil
 }
