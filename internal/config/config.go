@@ -31,7 +31,7 @@ func LoadConfig() (*Config, error) {
 		return nil, errors.New("SHORT_LENGTH must be a positive integer")
 	}
 	cleanup, err := strconv.Atoi(os.Getenv("CLEANUP_SECONDS"))
-	if err != nil {
+	if err != nil || cleanup <= 0 {
 		return nil, errors.New("error during CLEANUP_SECONDS parsing")
 	}
 	cfg := &Config{
