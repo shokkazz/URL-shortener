@@ -30,8 +30,8 @@ Thumbs.db
 
 # Environment / secrets
 .env
-.env.*
-!.env.example
+.env
+!.env
 
 # Local data
 *.db

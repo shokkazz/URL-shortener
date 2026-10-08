@@ -198,11 +198,11 @@ go run ./cmd/server
 
 Файл:
 
-    k8s/namespace.yaml
+    k8s/url-shortener-namespace.yaml
 
 Создать:
 
-    kubectl apply -f k8s/namespace.yaml
+    kubectl apply -f k8s/url-shortener-namespace.yaml
 
 Проверить:
 
@@ -263,6 +263,9 @@ go run ./cmd/server
 
     kubectl get pods -n url-shortener
 
+
+Если под всё ещё создаётся, нужно дать больше времени.
+
 ---
 
 
@@ -276,7 +279,7 @@ go run ./cmd/server
 
 Применить:
 
-    kubectl apply -f k8s/deployment.yaml
+    kubectl apply -f k8s/service.yaml
 
 ---
 
