@@ -3,23 +3,6 @@
 Сервис для сокращения ссылок на Go: PostgreSQL, pgx, goose-миграции, HTTP-API и простой веб-интерфейс.
 
 ---
-
-## Содержание
-
-- [Возможности](#возможности)
-- [Требования](#требования)
-- [Переменные окружения](#переменные-окружения)
-- [Запуск](#запуск)
-  - [Вариант 1. Всё через Docker Compose](#вариант-1-всё-через-docker-compose)
-  - [Вариант 2. Go локально, PostgreSQL в Docker](#вариант-2-go-локально-postgresql-в-docker)
-  - [Вариант 3. Всё локально, без Docker](#вариант-3-всё-локально-без-docker)
-- [API](#api)
-- [Быстрая проверка через cURL](#быстрая-проверка-через-curl)
-- [Структура проекта](#структура-проекта)
-- [Частые проблемы](#частые-проблемы)
-
----
-
 ## Возможности
 
 - Создание короткой ссылки с опциональным TTL и лимитом кликов.
@@ -72,6 +55,7 @@ DB_SSLMODE=disable
 > ⚠️ **`DB_HOST` зависит от способа запуска.**
 > - Go локально + Postgres в Docker с проброшенным портом → `DB_HOST=localhost`.
 > - Всё через docker-compose → `DB_HOST=postgres` (имя сервиса в compose-сети).
+> - K8s -> `DB_HOST=postgres`
 
 > ⚠️ `CLEANUP_SECONDS` обязателен: при `0` или отрицательном значении `time.NewTicker` паникует.
 
@@ -183,6 +167,131 @@ export $(cat .env | xargs)   # или использовать direnv / dotenv
 go run ./cmd/migrate
 go run ./cmd/server
 ```
+
+### Вариант 4. K8s
+**1. Запустить Minikube**
+
+Проверить состояние:
+
+    minikube status
+
+Если Minikube не запущен:
+
+    minikube start
+
+---
+
+**2. Собрать Docker image**
+
+Из корня проекта:
+
+    docker build -t urlshortener-server:latest .
+
+Загружаем image в Minikube:
+
+    minikube image load urlshortener-server:latest
+
+
+---
+
+**3. Namespace**
+
+Файл:
+
+    k8s/namespace.yaml
+
+Создать:
+
+    kubectl apply -f k8s/namespace.yaml
+
+Проверить:
+
+    kubectl get namespace
+
+---
+
+**4. Secret для PostgreSQL**
+
+Файл:
+
+    k8s/secret.yaml
+
+Создать:
+
+    kubectl apply -f k8s/secret.yaml
+
+Проверить:
+
+    kubectl get secrets -n url-shortener
+
+---
+
+**5. PostgreSQL**
+
+Файл:
+
+    k8s/postgres.yaml
+
+Применить:
+
+    kubectl apply -f k8s/postgres.yaml
+
+Проверить Pod:
+
+    kubectl get pods -n url-shortener
+
+Ожидаем:
+
+    postgres-xxxxxxxxxx-xxxxx   1/1   Running
+
+---
+
+**6. Дождаться готовности PostgreSQL**
+
+Просто статус `Running` ещё не означает, что PostgreSQL уже принимает подключения.
+
+Лучше дождаться Ready:
+
+    kubectl wait `
+      --for=condition=ready `
+      pod `
+      -l app=postgres `
+      -n url-shortener `
+      --timeout=120s
+
+После этого можно проверить:
+
+    kubectl get pods -n url-shortener
+
+---
+
+
+
+**7. Deployment приложения**
+
+Файл:
+
+    k8s/service.yaml
+
+
+Применить:
+
+    kubectl apply -f k8s/deployment.yaml
+
+---
+
+
+**8. Более удобный способ для разработки — port-forward**
+
+Можно не использовать tunnel Minikube.
+
+Запустить:
+
+    kubectl port-forward service/url-shortener 8080:8080 -n url-shortener
+
+После этого приложение доступно:
+
+    http://localhost:8080
 
 ---
 

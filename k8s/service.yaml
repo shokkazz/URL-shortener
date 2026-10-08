@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: url-shortener
+  namespace: url-shortener
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: service
+
+  template:
+    metadata:
+      labels:
+        app: service
+
+    spec:
+      initContainers:
+        - name: migrate
+          image: urlshortener-server:latest
+          imagePullPolicy: Never
+          command: ["./migrate"]
+
+          env:
+            - name: APP_PORT
+              value: "8080"
+
+            - name: SHORT_LENGTH
+              value: "8"
+
+            - name: DB_HOST
+              value: postgres
+
+            - name: DB_PORT
+              value: "5432"
+
+            - name: DB_USER
+              value: postgres
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+
+            - name: DB_NAME
+              value: shortener
+
+            - name: DB_SSLMODE
+              value: disable
+
+            - name: CLEANUP_SECONDS
+              value: "5"
+
+      containers:
+        - name: shortener
+          image: urlshortener-server:latest
+          imagePullPolicy: Never
+
+          ports:
+            - containerPort: 8080
+
+          env:
+            - name: APP_PORT
+              value: "8080"
+
+            - name: SHORT_LENGTH
+              value: "8"
+
+            - name: DB_HOST
+              value: postgres
+
+            - name: DB_PORT
+              value: "5432"
+
+            - name: DB_USER
+              value: postgres
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+
+            - name: DB_NAME
+              value: shortener
+
+            - name: DB_SSLMODE
+              value: disable
+
+            - name: CLEANUP_SECONDS
+              value: "30"
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: url-shortener
+  namespace: url-shortener
+spec:
+  selector:
+    app: service
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: NodePort
