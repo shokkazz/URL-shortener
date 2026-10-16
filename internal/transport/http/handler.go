@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"shortener-service/internal/domain"
+	"shortener-service/internal/logger"
 	"strings"
 )
 
@@ -20,15 +21,17 @@ type URLService interface {
 type Handler struct {
 	us        URLService
 	errorPage *template.Template
+	logger    *logger.Logger
 }
 
-func NewHandler(us URLService) *Handler {
+func NewHandler(us URLService, logger *logger.Logger) *Handler {
 	tmpl := template.Must(
 		template.ParseFiles("web/errors.html"),
 	)
 	return &Handler{
 		errorPage: tmpl,
 		us:        us,
+		logger:    logger,
 	}
 }
 
@@ -40,8 +43,18 @@ func (h *Handler) Redirect(
 	if isPrefetch(r) {
 		link, err := h.us.GetByShortenedURL(r.Context(), shortenedURL)
 		if err != nil {
-			h.renderErrorPage(w, http.StatusNotFound, "Link not found",
-				"This short link does not exist.")
+			if errors.Is(err, domain.ErrShortLinkNotFound) {
+				h.renderErrorPage(w, http.StatusNotFound,
+					"Link not found", "This short link does not exist.")
+				return
+			}
+
+			h.logger.Error(r.Context(), "Failed to get short link for prefetch",
+				"error", err,
+				"shortened_url", shortenedURL,
+			)
+			h.renderErrorPage(w, http.StatusInternalServerError,
+				"Internal server error", "Something went wrong.")
 			return
 		}
 		http.Redirect(w, r, link.URL, http.StatusFound)
@@ -79,6 +92,10 @@ func (h *Handler) Redirect(
 			)
 
 		default:
+			h.logger.Error(r.Context(), "Failed to register click",
+				"error", err,
+				"shortened_url", shortenedURL,
+			)
 			h.renderErrorPage(
 				w,
 				http.StatusInternalServerError,
@@ -113,6 +130,9 @@ func (h *Handler) DeleteShortLink(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		h.logger.Error(r.Context(), "Failed to delete short link",
+			"error", err,
+		)
 		h.respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -135,6 +155,9 @@ func (h *Handler) GetShortLink(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		h.logger.Error(r.Context(), "Failed to get short link",
+			"error", err,
+		)
 		h.respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -154,6 +177,7 @@ func (h *Handler) CreateShortLink(
 			http.StatusBadRequest,
 			"invalid request body",
 		)
+		h.logger.Error(r.Context(), "Failed to decode request body", err)
 		return
 	}
 
@@ -188,6 +212,9 @@ func (h *Handler) CreateShortLink(
 			)
 
 		default:
+			h.logger.Error(r.Context(), "Failed to create short link",
+				"error", err,
+			)
 			h.respondError(
 				w,
 				http.StatusInternalServerError,
@@ -253,10 +280,8 @@ func (h *Handler) renderErrorPage(
 	)
 
 	if err != nil {
-		http.Error(
-			w,
-			"internal server error",
-			http.StatusInternalServerError,
+		h.logger.Error(context.Background(), "Failed to render error page",
+			"error", err,
 		)
 	}
 }

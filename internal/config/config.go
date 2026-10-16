@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -13,8 +14,13 @@ type Config struct {
 	ShortURLLength int
 	Charset        string
 	CleanupSeconds int
+	Logger         LoggerConfig
 }
-
+type LoggerConfig struct {
+	Level    string
+	PodName  string
+	HostName string
+}
 type DatabaseConfig struct {
 	Host     string
 	Port     string
@@ -46,6 +52,11 @@ func LoadConfig() (*Config, error) {
 			User:     os.Getenv("DB_USER"),
 			Password: os.Getenv("DB_PASSWORD"),
 			SSLmode:  os.Getenv("DB_SSLMODE"),
+		},
+		Logger: LoggerConfig{
+			Level:    os.Getenv("LOG_LEVEL"),
+			PodName:  os.Getenv("POD_NAME"),
+			HostName: os.Getenv("HOST_NAME"),
 		},
 	}
 	if err := cfg.validate(); err != nil {
@@ -95,6 +106,13 @@ func (cfg *Config) validate() error {
 
 	if cfg.Dbc.SSLmode == "" {
 		return errors.New("DB_SSLMODE is required")
+	}
+	switch strings.ToLower(cfg.Logger.Level) {
+	case "trace", "debug", "info", "warn", "error", "fatal":
+	default:
+		return fmt.Errorf(
+			"LOG_LEVEL must be one of trace, debug, info, warn, error, fatal",
+		)
 	}
 
 	return nil

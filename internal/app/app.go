@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"shortener-service/internal/config"
 	"shortener-service/internal/database/postgres"
+	"shortener-service/internal/logger"
 	"shortener-service/internal/service"
 	myhttp "shortener-service/internal/transport/http"
 	"syscall"
@@ -24,6 +25,11 @@ func StartApp() {
 		log.Println("Error loading config:", err)
 		return
 	}
+	logs, err := logger.New(*cfg)
+	if err != nil {
+		log.Println("Error creating logger:", err)
+		return
+	}
 	ctx := context.Background()
 	db, err := pgxpool.New(ctx, cfg.Dbc.DSN())
 
@@ -37,9 +43,11 @@ func StartApp() {
 		log.Println("Error during database initial ping: ", err)
 		return
 	}
+	httpLog := logs.With("service.layer", "http")
+	serviceLog := logs.With("service.layer", "service")
 	ur := postgres.NewURLRepository(db)
-	us := service.NewShortenerService(ur, cfg.ShortURLLength, cfg.Charset, cfg.CleanupSeconds)
-	uh := myhttp.NewHandler(us)
+	us := service.NewShortenerService(ur, cfg.ShortURLLength, cfg.Charset, cfg.CleanupSeconds, serviceLog)
+	uh := myhttp.NewHandler(us, httpLog)
 	us.StartCleanup(ctx)
 
 	mux := http.NewServeMux()
@@ -50,7 +58,7 @@ func StartApp() {
 	mux.HandleFunc("DELETE /shorten", uh.DeleteShortLink)
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
 
-	loggingHandler := loggerMiddleware(mux)
+	loggingHandler := loggerMiddleware(httpLog, mux)
 
 	server := http.Server{
 		Addr:         ":" + cfg.Port,
@@ -63,7 +71,7 @@ func StartApp() {
 	quit := make(chan os.Signal, 1)
 
 	go func() {
-		log.Println("server started on " + cfg.Port)
+		logs.Info(ctx, "server started on port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil &&
 			!errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
@@ -74,34 +82,40 @@ func StartApp() {
 	defer signal.Stop(quit)
 	select {
 	case err := <-serverErr:
-		log.Println("Server failed:", err)
+		logs.Error(ctx, "Server failed:", err)
 
 	case sig := <-quit:
-		log.Println("Received signal:", sig)
+		logs.Info(ctx, "Received signal:", sig)
 	}
 
 	ctxShutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err = server.Shutdown(ctxShutdown); err != nil {
-		log.Println("Server forced to shutdown: ", err)
+		logs.Info(ctx, "Server forced to shutdown: ", err)
 	}
-	log.Println("Server stopped")
+	logs.Info(ctx, "Server stopped")
 }
 
-func loggerMiddleware(next http.Handler) http.Handler {
+func loggerMiddleware(logs *logger.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		log.Println("request " + r.RemoteAddr + " " + r.Method + " " + r.URL.Path)
-		rw := responseRecorder{
-			w,
-			http.StatusOK,
-		}
-		next.ServeHTTP(&rw, r)
-		log.Println("request finished "+" ", rw.statusCode, " "+r.RemoteAddr+" "+r.Method+" "+r.URL.Path+" in ", time.Since(start))
 
-	},
-	)
+		rw := &responseRecorder{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+
+		next.ServeHTTP(rw, r)
+
+		logs.Info(r.Context(), "HTTP request completed",
+			"http.method", r.Method,
+			"http.path", r.URL.Path,
+			"http.status_code", rw.statusCode,
+			"http.remote_addr", r.RemoteAddr,
+			"http.duration_ms", time.Since(start).Milliseconds(),
+		)
+	})
 }
 
 type responseRecorder struct {

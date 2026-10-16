@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"log"
 	"net/url"
+	"shortener-service/internal/logger"
 	"strings"
 	"time"
 
@@ -17,6 +17,7 @@ type ShortenerService struct {
 	shortURLLength int
 	charset        string
 	Cleanup        int
+	logger         *logger.Logger
 }
 
 func NewShortenerService(
@@ -24,12 +25,14 @@ func NewShortenerService(
 	shortURLLength int,
 	charset string,
 	cleanup int,
+	logger *logger.Logger,
 ) *ShortenerService {
 	return &ShortenerService{
 		Cleanup:        cleanup,
 		ur:             ur,
 		shortURLLength: shortURLLength,
 		charset:        charset,
+		logger:         logger,
 	}
 }
 
@@ -222,23 +225,33 @@ func (s *ShortenerService) isInactive(link domain.ShortURL) bool {
 }
 
 func (s *ShortenerService) StartCleanup(ctx context.Context) {
-
 	go func() {
 		ticker := time.NewTicker(time.Duration(s.Cleanup) * time.Second)
 		defer ticker.Stop()
 
+		s.logger.Info(ctx, "Cleanup worker started",
+			"cleanup_interval_seconds", s.Cleanup,
+		)
+
 		for {
 			select {
 			case <-ctx.Done():
+				s.logger.Info(context.Background(), "Cleanup worker stopped")
 				return
+
 			case <-ticker.C:
 				n, err := s.ur.DeleteInactive(ctx)
 				if err != nil {
-					log.Println("cleanup error:", err)
+					s.logger.Error(ctx, "Failed to clean up inactive links",
+						"error", err,
+					)
 					continue
 				}
+
 				if n > 0 {
-					log.Printf("cleanup: removed %d inactive links", n)
+					s.logger.Info(ctx, "Inactive links removed",
+						"removed_count", n,
+					)
 				}
 			}
 		}

@@ -25,33 +25,36 @@ spec:
           env:
             - name: APP_PORT
               value: "8080"
-
             - name: SHORT_LENGTH
               value: "8"
-
             - name: DB_HOST
               value: postgres
-
             - name: DB_PORT
               value: "5432"
-
             - name: DB_USER
               value: postgres
-
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
                   key: DB_PASSWORD
-
             - name: DB_NAME
               value: shortener
-
             - name: DB_SSLMODE
               value: disable
-
             - name: CLEANUP_SECONDS
               value: "5"
+
+            - name: LOG_LEVEL
+              value: "info"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
 
       containers:
         - name: shortener
@@ -64,34 +67,36 @@ spec:
           env:
             - name: APP_PORT
               value: "8080"
-
             - name: SHORT_LENGTH
               value: "8"
-
             - name: DB_HOST
               value: postgres
-
             - name: DB_PORT
               value: "5432"
-
             - name: DB_USER
               value: postgres
-
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
                   key: DB_PASSWORD
-
             - name: DB_NAME
               value: shortener
-
             - name: DB_SSLMODE
               value: disable
-
             - name: CLEANUP_SECONDS
               value: "30"
 
+            - name: LOG_LEVEL
+              value: "info"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
 
 ---
 apiVersion: v1

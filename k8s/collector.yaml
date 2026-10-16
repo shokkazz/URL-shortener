@@ -1,0 +1,13 @@
+
+remoteWrite:
+  - url: http://victoria-logs-single-server.logging.svc.cluster.local:9428/insert/native
+    headers:
+      VL-Ignore-Fields:
+        - kubernetes.container_id
+        - kubernetes.pod_ip
+        - kubernetes.pod_labels.pod-template-hash
+
+collector:
+  msgField:
+    - message
+    - msg
