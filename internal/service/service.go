@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/url"
 	"shortener-service/internal/logger"
+	"shortener-service/internal/observability"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ type ShortenerService struct {
 	charset        string
 	Cleanup        int
 	logger         *logger.Logger
+	metrics        *observability.Metrics
 }
 
 func NewShortenerService(
@@ -26,6 +28,7 @@ func NewShortenerService(
 	charset string,
 	cleanup int,
 	logger *logger.Logger,
+	metrics *observability.Metrics,
 ) *ShortenerService {
 	return &ShortenerService{
 		Cleanup:        cleanup,
@@ -33,6 +36,7 @@ func NewShortenerService(
 		shortURLLength: shortURLLength,
 		charset:        charset,
 		logger:         logger,
+		metrics:        metrics,
 	}
 }
 
@@ -45,14 +49,17 @@ func (s *ShortenerService) CreateShortLink(
 
 	normalizedURL, err := normalizeURL(originalURL)
 	if err != nil {
+		s.metrics.ShortLinkCreateErrors.Inc()
 		return domain.ShortURL{}, err
 	}
 
 	if expiresIn != nil && *expiresIn <= 0 {
+		s.metrics.ShortLinkCreateErrors.Inc()
 		return domain.ShortURL{}, domain.ErrInvalidTTL
 	}
 
 	if maxClicks != nil && *maxClicks <= 0 {
+		s.metrics.ShortLinkCreateErrors.Inc()
 		return domain.ShortURL{}, domain.ErrInvalidMaxClicks
 	}
 	var expiresAt *time.Time
@@ -65,6 +72,7 @@ func (s *ShortenerService) CreateShortLink(
 	for {
 		shortenedURL, err := s.generateShortURL()
 		if err != nil {
+			s.metrics.ShortLinkCreateErrors.Inc()
 			return domain.ShortURL{}, err
 		}
 
@@ -79,6 +87,8 @@ func (s *ShortenerService) CreateShortLink(
 		err = s.ur.CreateShortLink(ctx, shortURL)
 
 		if err == nil {
+			s.metrics.ShortLinksCreated.Inc()
+
 			return shortURL, nil
 		}
 		if errors.Is(err, domain.ErrShortLinkExists) {
@@ -87,6 +97,7 @@ func (s *ShortenerService) CreateShortLink(
 				domain.ShortURL{URL: normalizedURL},
 			)
 			if getErr != nil {
+				s.metrics.ShortLinkCreateErrors.Inc()
 				return domain.ShortURL{}, getErr
 			}
 
@@ -96,6 +107,7 @@ func (s *ShortenerService) CreateShortLink(
 
 			if delErr := s.ur.DeleteShortLink(ctx, existing); delErr != nil {
 				if !errors.Is(delErr, domain.ErrShortLinkNotFound) {
+					s.metrics.ShortLinkCreateErrors.Inc()
 					return domain.ShortURL{}, delErr
 				}
 			}
@@ -105,7 +117,7 @@ func (s *ShortenerService) CreateShortLink(
 		if errors.Is(err, domain.ErrShortURLCollision) {
 			continue
 		}
-
+		s.metrics.ShortLinkCreateErrors.Inc()
 		return domain.ShortURL{}, err
 	}
 }
@@ -118,11 +130,17 @@ func (s *ShortenerService) GetShortLink(
 	if err != nil {
 		return domain.ShortURL{}, err
 	}
-
-	return s.ur.GetShortLink(
+	res, errs := s.ur.GetShortLink(
 		ctx,
 		domain.ShortURL{URL: normalizedURL},
 	)
+	if errs != nil {
+		if errors.Is(errs, domain.ErrShortLinkNotFound) {
+			s.metrics.ShortLinkNotFound.Inc()
+		}
+		return domain.ShortURL{}, errs
+	}
+	return res, errs
 }
 
 func (s *ShortenerService) DeleteShortLink(
@@ -147,14 +165,28 @@ func (s *ShortenerService) GetByShortenedURL(
 	ctx context.Context,
 	shortenedURL string,
 ) (domain.ShortURL, error) {
-	return s.ur.GetByShortURL(ctx, shortenedURL)
+	res, err := s.ur.GetByShortURL(ctx, shortenedURL)
+	if err != nil {
+		if errors.Is(err, domain.ErrShortLinkNotFound) {
+			s.metrics.ShortLinkNotFound.Inc()
+		}
+		return domain.ShortURL{}, err
+	}
+	return res, err
 }
 
 func (s *ShortenerService) RegisterClick(
 	ctx context.Context,
 	shortenedURL string,
 ) (domain.ShortURL, error) {
-	return s.ur.RegisterClick(ctx, shortenedURL)
+	res, err := s.ur.RegisterClick(ctx, shortenedURL)
+	if err != nil {
+		if errors.Is(err, domain.ErrShortLinkNotFound) {
+			s.metrics.ShortLinkNotFound.Inc()
+		}
+		return domain.ShortURL{}, err
+	}
+	return res, err
 }
 
 func (s *ShortenerService) generateShortURL() (string, error) {

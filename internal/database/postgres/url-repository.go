@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"shortener-service/internal/observability"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -12,12 +13,17 @@ import (
 )
 
 type URLRepository struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	metrics *observability.Metrics
 }
 
-func NewURLRepository(db *pgxpool.Pool) *URLRepository {
+func NewURLRepository(
+	db *pgxpool.Pool,
+	metrics *observability.Metrics,
+) *URLRepository {
 	return &URLRepository{
-		db: db,
+		db:      db,
+		metrics: metrics,
 	}
 }
 
