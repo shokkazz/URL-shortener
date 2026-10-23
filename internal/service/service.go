@@ -179,14 +179,18 @@ func (s *ShortenerService) RegisterClick(
 	ctx context.Context,
 	shortenedURL string,
 ) (domain.ShortURL, error) {
+	start := time.Now()
 	res, err := s.ur.RegisterClick(ctx, shortenedURL)
+	s.metrics.ShortLinkRedirectDuration.Observe(
+		time.Since(start).Seconds(),
+	)
 	if err != nil {
 		if errors.Is(err, domain.ErrShortLinkNotFound) {
 			s.metrics.ShortLinkNotFound.Inc()
 		}
 		return domain.ShortURL{}, err
 	}
-	return res, err
+	return res, nil
 }
 
 func (s *ShortenerService) generateShortURL() (string, error) {

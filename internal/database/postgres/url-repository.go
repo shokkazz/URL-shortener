@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"shortener-service/internal/observability"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -34,7 +35,10 @@ func (r *URLRepository) DeleteInactive(ctx context.Context) (int64, error) {
 		   OR (max_clicks IS NOT NULL AND clicks >= max_clicks)
 	`
 
+	start := time.Now()
 	cmd, err := r.db.Exec(ctx, query)
+	r.observeQuery("delete_inactive", start, err)
+
 	if err != nil {
 		return 0, err
 	}
@@ -56,6 +60,7 @@ func (r *URLRepository) CreateShortLink(
     VALUES ($1, $2, $3, $4, $5)
 `
 
+	start := time.Now()
 	_, err := r.db.Exec(
 		ctx,
 		query,
@@ -65,6 +70,7 @@ func (r *URLRepository) CreateShortLink(
 		url.MaxClicks,
 		url.Clicks,
 	)
+	r.observeQuery("create_short_link", start, err)
 
 	if err == nil {
 		return nil
@@ -98,11 +104,9 @@ func (r *URLRepository) DeleteShortLink(ctx context.Context, url domain.ShortURL
 		WHERE url = $1
 	`
 
-	cmd, err := r.db.Exec(
-		ctx,
-		query,
-		url.URL,
-	)
+	start := time.Now()
+	cmd, err := r.db.Exec(ctx, query, url.URL)
+	r.observeQuery("delete_short_link", start, err)
 
 	if err != nil {
 		return err
@@ -132,22 +136,19 @@ func (r *URLRepository) GetShortLink(
 
 	var result domain.ShortURL
 
-	err := r.db.QueryRow(
-		ctx,
-		query,
-		url.URL,
-	).Scan(
+	start := time.Now()
+	err := r.db.QueryRow(ctx, query, url.URL).Scan(
 		&result.URL,
 		&result.ShortenedURL,
 		&result.ExpiresAt,
 		&result.MaxClicks,
 		&result.Clicks,
 	)
+	r.observeQuery("get_short_link", start, err)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ShortURL{}, domain.ErrShortLinkNotFound
 	}
-
 	if err != nil {
 		return domain.ShortURL{}, err
 	}
@@ -171,22 +172,19 @@ func (r *URLRepository) GetByShortURL(
 
 	var result domain.ShortURL
 
-	err := r.db.QueryRow(
-		ctx,
-		query,
-		short,
-	).Scan(
+	start := time.Now()
+	err := r.db.QueryRow(ctx, query, short).Scan(
 		&result.URL,
 		&result.ShortenedURL,
 		&result.ExpiresAt,
 		&result.MaxClicks,
 		&result.Clicks,
 	)
+	r.observeQuery("get_by_short_url", start, err)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ShortURL{}, domain.ErrShortLinkNotFound
 	}
-
 	if err != nil {
 		return domain.ShortURL{}, err
 	}
@@ -209,6 +207,7 @@ func (r *URLRepository) RegisterClick(
 
 	var result domain.ShortURL
 
+	start := time.Now()
 	err := r.db.QueryRow(ctx, updateQuery, shortenedURL).Scan(
 		&result.URL,
 		&result.ShortenedURL,
@@ -216,6 +215,7 @@ func (r *URLRepository) RegisterClick(
 		&result.MaxClicks,
 		&result.Clicks,
 	)
+	r.observeQuery("register_click", start, err)
 
 	if err == nil {
 		return result, nil
@@ -237,8 +237,10 @@ func (r *URLRepository) RegisterClick(
 		isLimitReached bool
 	)
 
+	start = time.Now()
 	err = r.db.QueryRow(ctx, checkQuery, shortenedURL).
 		Scan(&isExpired, &isLimitReached)
+	r.observeQuery("check_click_status", start, err)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ShortURL{}, domain.ErrShortLinkNotFound
@@ -256,17 +258,19 @@ func (r *URLRepository) RegisterClick(
 		return domain.ShortURL{}, domain.ErrShortLinkNotFound
 	}
 }
-func mapDBError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return err
+func (r *URLRepository) observeQuery(
+	operation string,
+	start time.Time,
+	err error,
+) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = nil
 	}
-	switch pgErr.Code {
-	case "23505":
-		return domain.ErrShortLinkExists
-	case "23503":
-		return domain.ErrShortLinkNotFound
-	default:
-		return err
-	}
+
+	r.metrics.RecordDBQuery(
+		operation,
+		time.Since(start),
+		err,
+		250*time.Millisecond,
+	)
 }

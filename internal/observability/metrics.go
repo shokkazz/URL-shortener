@@ -49,7 +49,6 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	reg := prometheus.NewRegistry()
 
-	// Standard Go runtime and process metrics.
 	reg.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(
@@ -243,7 +242,6 @@ func NewMetrics() *Metrics {
 	return m
 }
 
-// Handler exposes metrics in Prometheus/OpenMetrics format.
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(
 		m.Registry,
@@ -253,8 +251,6 @@ func (m *Metrics) Handler() http.Handler {
 	)
 }
 
-// RecordDBQuery records a measured database operation.
-// Call once per operation, after it completes.
 func (m *Metrics) RecordDBQuery(
 	operation string,
 	duration time.Duration,
@@ -274,8 +270,6 @@ func (m *Metrics) RecordDBQuery(
 	}
 }
 
-// StartDBMetrics periodically updates pool and storage metrics.
-// Run once during application startup. Cancellation stops the worker.
 func (m *Metrics) StartDBMetrics(
 	ctx context.Context,
 	db *pgxpool.Pool,
@@ -285,7 +279,6 @@ func (m *Metrics) StartDBMetrics(
 		interval = 30 * time.Second
 	}
 
-	// Initialize values immediately.
 	m.refreshDBMetrics(ctx, db)
 
 	go func() {
@@ -325,20 +318,23 @@ func (m *Metrics) refreshDBMetrics(
 		m.DBPoolAcquiredRatio.Set(0)
 	}
 
-	// These are cumulative pool statistics. Add only the difference
-	// since the previous refresh.
 	currentAcquireCount := stats.AcquireCount()
 	currentWaitSeconds := stats.AcquireDuration().Seconds()
 
 	m.mu.Lock()
-	m.DBPoolAcquireTotal.Add(
-		float64(currentAcquireCount - m.lastAcquireCount),
-	)
-	m.DBPoolAcquireWaitSeconds.Add(
-		currentWaitSeconds - m.lastAcquireWaitSeconds,
-	)
+	if currentAcquireCount >= m.lastAcquireCount {
+		m.DBPoolAcquireTotal.Add(
+			float64(currentAcquireCount - m.lastAcquireCount),
+		)
+	}
+	if currentWaitSeconds >= m.lastAcquireWaitSeconds {
+		m.DBPoolAcquireWaitSeconds.Add(
+			currentWaitSeconds - m.lastAcquireWaitSeconds,
+		)
+	}
 	m.lastAcquireCount = currentAcquireCount
 	m.lastAcquireWaitSeconds = currentWaitSeconds
+
 	m.mu.Unlock()
 
 	var dbSize int64

@@ -375,6 +375,11 @@ http://localhost:8080/aB3xY9Qk
 curl -X DELETE "http://localhost:8080/shorten?url=https://example.com"
 ```
 
+# Логгирование
+```helm upgrade --install victoria-logs-collector oci://ghcr.io/victoriametrics/helm-charts/victoria-logs-collector --namespace logging --wait --timeout 15m -f .\k8s\collector.yaml```
+
+```helm upgrade --install victoria-logs-single vm/victoria-logs-single --namespace logging --create-namespace --wait --timeout 15m --set server.retentionPeriod=30d --set server.persistentVolume.size=5Gi```
+
 ---
 
 ## Структура проекта
