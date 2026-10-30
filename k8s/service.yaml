@@ -102,6 +102,17 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
 
+        - name: prober
+          image: urlshortener-server:latest-slow
+          imagePullPolicy: Never
+          command: [ "./prober" ]
+          ports:
+            - name: probe-metrics
+              containerPort: 9091
+          env:
+            - name: PROBE_URL
+              value: "http://localhost:8080/health"
+
 ---
 
 apiVersion: v1

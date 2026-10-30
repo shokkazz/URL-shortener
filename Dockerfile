@@ -9,6 +9,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 go build -o server ./cmd/server
 RUN CGO_ENABLED=0 go build -o migrate ./cmd/migrate
+RUN CGO_ENABLED=0 go build -o prober ./cmd/prober
 
 
 FROM ubuntu:latest
@@ -17,9 +18,11 @@ WORKDIR /app
 
 COPY --from=builder /app/server .
 COPY --from=builder /app/migrate .
+COPY --from=builder /app/prober .
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/web ./web
 
 EXPOSE 8080
+EXPOSE 9091
 
 CMD ["./server"]

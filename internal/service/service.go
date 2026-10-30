@@ -88,7 +88,6 @@ func (s *ShortenerService) CreateShortLink(
 
 		if err == nil {
 			s.metrics.ShortLinksCreated.Inc()
-
 			return shortURL, nil
 		}
 		if errors.Is(err, domain.ErrShortLinkExists) {
