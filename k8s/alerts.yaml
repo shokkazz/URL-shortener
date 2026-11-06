@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: url-shortener-alert-rules
+  namespace: default
+data:
+  alerts.yml: |
+    groups:
+      - name: url-shortener-service
+        interval: 15s
+        rules:
+          - alert: ShortenerProbeFailed
+            expr: min(url_shortener_probe_success) == 0
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: "URL Shortener is down"
+              description: "probe unsuccessful"
+          - alert: ShortenerCreateErrors
+            expr: sum(increase(short_link_create_errors_total[5m])) >= 10
+            for: 30s
+            labels:
+              severity: warning
+            annotations:
+              summary: "Creating errors amount increased"
+              description: "creating errors amount raised"
+
+          - alert: GoHighGoroutines
+            expr: max(go_goroutines{job="url-shortener-app"}) > 150
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Goroutines amount increased"
+              description: "Goroutines amount is over 100."
+
+          - alert: GoHighMemoryUsage
+            expr: max(process_resident_memory_bytes{job="url-shortener-app"}) > 314572800
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High Memory consumption"
+              description: "Memory consumption is over 300 MiB."

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: quay.io/prometheus/alertmanager:v0.28.1
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --web.listen-address=:9093
+          ports:
+            - name: web
+              containerPort: 9093
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager/alertmanager.yml
+              subPath: alertmanager.yml
+            - name: secret
+              mountPath: /etc/alertmanager/secrets
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: secret
+          secret:
+            secretName: alertmanager-telegram
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: default
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - name: web
+      port: 9093
+      targetPort: 9093
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmalert
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmalert
+  template:
+    metadata:
+      labels:
+        app: vmalert
+    spec:
+      containers:
+        - name: vmalert
+          image: victoriametrics/vmalert:v1.154.0
+          args:
+            - -rule=/etc/vmalert/alerts.yml
+            - -datasource.url=http://vmsingle-victoria-metrics-single-server.default.svc.cluster.local:8428
+            - -notifier.url=http://alertmanager.default.svc.cluster.local:9093
+            - -evaluationInterval=15s
+            - -httpListenAddr=:8880
+          ports:
+            - name: web
+              containerPort: 8880
+          volumeMounts:
+            - name: rules
+              mountPath: /etc/vmalert
+      volumes:
+        - name: rules
+          configMap:
+            name: url-shortener-alert-rules
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmalert
+  namespace: default
+spec:
+  selector:
+    app: vmalert
+  ports:
+    - name: web
+      port: 8880
+      targetPort: 8880

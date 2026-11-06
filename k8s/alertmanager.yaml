@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: default
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 1m
+
+    route:
+      receiver: telegram
+      group_by: ['alertname']
+      group_wait: 5s
+      group_interval: 30s
+      repeat_interval: 1h
+
+    receivers:
+      - name: telegram
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/bot-token
+            chat_id: 1263281623
+            send_resolved: true
+            message: |
+              {{ if eq .Status "firing" }}ALERT{{ else }}RESOLVED{{ end }}
+
+              {{ range .Alerts }}
+              Name: {{ .Labels.alertname }}
+              Severity: {{ .Labels.severity }}
+              Description: {{ .Annotations.description }}
+              {{ end }}
